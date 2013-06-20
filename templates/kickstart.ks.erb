@@ -1,0 +1,227 @@
+<% if comment != '' -%>
+#
+#	<%= comment %>
+#
+
+<% end -%>
+#
+#	misc
+#
+lang en_US.UTF-8
+keyboard us
+timezone --utc <%= timezone %>
+
+#
+#	security
+#
+rootpw --iscrypted $default_password_crypted
+authconfig --enableshadow --passalgo=sha512
+selinux --enforcing
+
+#
+#	installation
+#
+install
+text
+skipx
+firstboot --disable
+url --url=$tree
+
+#
+#	repositories
+#
+$yum_repo_stanza
+
+#
+#	networking
+#
+$SNIPPET('network_config')
+firewall --enabled
+
+#
+#	partitioning
+#
+<% if not(gpt) and not(efi) -%><%# this is needed for BIOS (non-[U]EFI) -%><%# FIXME: is this the correct condition for zerombr? -%>
+# Clear the Master Boot Record
+zerombr
+<% end -%>
+<% if autopart -%>
+# Partition clearing information
+clearpart --all --initlabel
+# Allow anaconda to partition the system as needed
+autopart
+<% else -%>
+<% if osdrives.count() > 1 -%>
+ignoredisk --only-use=<%= osdrives.join(',') %>
+clearpart --all --initlabel --drives=<%= osdrives.join(',') %>
+<% else -%>
+clearpart --all --initlabel
+<% end -%>
+<% if gpt and not(efi) -%><%# this is needed for GPT with BIOS (non-[U]EFI) -%>
+# FIXME: should we do this in a loop for each os drive using --ondisk=FIXME ?
+part biosboot --fstype=biosboot --size=1
+<% end -%>
+
+#
+#	raid partitions
+#
+<% if osdrives.count() > 1 -%>
+<%# build the software raid partitions -%>
+<% osdrives.each do |disk| -%>
+part raid.boot-<%= disk %> --size=<%= partbootsize %> --maxsize=<%= partbootsize %> --ondisk=<%= disk %>
+#part raid.swap-<%= disk %> --size=TODO --ondisk=<%= disk %>	# TODO: BUG: there's no way to specify a --recommended here
+part raid.pv-<%= disk %> --size=1 --grow --ondisk=<%= disk %>
+<% end -%>
+<% end -%>
+
+#
+#	boot partition
+#
+<% if partboot -%>
+
+<% if osdrives.count() > 1 -%>
+raid /boot --fstype=ext4 --level=1 --device=md0<% osdrives.each do |disk| %> raid.boot-<%= disk %><% end %>
+<% else -%>
+part /boot --fstype=ext4 --size=<%= partbootsize %> --maxsize=<%= partbootsize %> --asprimary	# FIXME: --asprimary ? does this conflict with gpt ?
+<% end -%>
+
+#
+#	efi specific stuff
+#
+<% if efi -%>
+part /boot/efi --fstype=efi --size=1024
+<% if osdrives.count() > 1 -%>
+<% osdrives.each do |disk| -%>
+#part /boot/efi --fstype=efi --size=1024 --ondisk=<%= disk %>	# TODO: there can only be one (how do you efi boot partition HA?)
+<% end -%>
+<% end -%>
+<% end -%>
+<% end -%><%# end: if partboot -%>
+
+#
+#	non-lvm swap partitions [UNTESTED]
+#
+#<% if partswap -%>
+#<% if osdrives.count() > 1 -%>
+#raid swap --level=1 --device=md2<% osdrives.each do |disk| %> raid.swap-<%= disk %><% end %>
+#<% else -%>
+#part swap --recommended
+#<% end -%>
+#<% end -%>
+
+#
+#	pv / root partition
+#
+<% if osdrives.count() > 1 -%>
+raid pv.01 --level=1 --device=md1<% osdrives.each do |disk| %> raid.pv-<%= disk %><% end %>
+<% else -%>
+part pv.01 --size=1 --grow --asprimary	# FIXME: --asprimary ? does this conflict with gpt ?
+<% end -%>
+
+#
+#	lvm volgroup
+#
+volgroup vg_00 --pesize=4096 pv.01
+
+#
+#	logical volumes
+#
+logvol / --vgname=vg_00 --name=lv_root --fstype=ext4 <%= partroot_spec %>
+
+<% if parthome -%>
+logvol /home --vgname=vg_00 --name=lv_home --fstype=ext4 --size=<%= parthomesize %> --maxsize=<%= parthomesize %>
+<% end -%>
+
+<% if partvar -%>
+logvol /var --vgname=vg_00 --name=lv_var --fstype=ext4 <%= partvar_spec %>
+<% end -%>
+
+<% if partswap -%>
+# NOTE: swap is on mdadm so that it's HA (highly available).
+# NOTE: it's on lvm to be able to use: --recommended
+# NOTE: (this also gives you lvm flexibility if you're insane)
+logvol swap --vgname=vg_00 --name=lv_swap --fstype=swap --recommended
+<% end -%>
+
+<% end -%><%# end autopart -%>
+
+#
+#	bootloader
+#
+<% if efi -%><%# this is needed for [U]EFI -%>
+bootloader --location=boot	# efi
+<% else -%>
+bootloader --location=mbr	# bios
+<% end -%>
+
+#
+#	pre install
+#
+%pre
+$SNIPPET('log_ks_pre')
+$SNIPPET('kickstart_start')
+$SNIPPET('pre_install_network_config')
+# Enable installation monitoring
+$SNIPPET('pre_anamon')
+<%# get puppet to add some pre install commands to run -%>
+<% preinstall.each do |x| -%>
+<%= x %>
+<% end -%>
+%end
+
+#
+#	system packages
+#
+%packages --nobase
+<% valid_packages_defaults.flatten.each do |x| -%>
+<%= x %>
+<% end -%>
+$SNIPPET('func_install_if_enabled')
+$SNIPPET('puppet_install_if_enabled')
+
+<%# add a list of packages to install on kickstart -%>
+#
+#	user packages (sysadmin favourites)
+#
+%packages --nobase --ignoremissing
+<% packages.flatten.each do |x| -%>
+<%= x %>
+<% end -%>
+
+#
+#	post install
+#
+%post
+$SNIPPET('log_ks_post')
+# Start yum configuration 
+$yum_config_stanza
+# End yum configuration
+$SNIPPET('post_install_kernel_options')
+$SNIPPET('post_install_network_config')
+$SNIPPET('func_register_if_enabled')
+$SNIPPET('puppet_register_if_enabled')
+$SNIPPET('download_config_files')
+$SNIPPET('koan_environment')
+$SNIPPET('redhat_register')
+$SNIPPET('cobbler_register')
+# Enable post-install boot notification
+$SNIPPET('post_anamon')
+<%# get puppet to add some post install commands to run -%>
+<% postinstall.each do |x| -%>
+<%= x %>
+<% end -%>
+
+#
+#	cobbler final steps
+#
+$SNIPPET('kickstart_done')
+%end
+
+#
+#	reboot after installation
+#
+# FIXME: i think this should actually be 'poweroff' for virtual machines which
+# FIXME: we are installing with puppet... funny enough, after installation the
+# FIXME: machine actually turns off. does this mean there is a bug somewhere ?
+reboot
+
