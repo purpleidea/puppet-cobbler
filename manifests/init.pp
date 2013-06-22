@@ -743,6 +743,8 @@ class cobbler_distro {
 	$rm_cmd = '/usr/bin/cobbler distro remove --name='		# delete cobbler distros
 	$fs_chr = ' '
 	$suffix = '.distro'
+	$regexp = []
+	$ignore = []
 
 	# build the clean script
 	file { "${vardir}/clean-distros.sh":
@@ -826,7 +828,7 @@ define cobbler::distro(
 	$requires = File["${vardir}/distros/"]	# simple requires
 
 	file { "${vardir}/distros/${name}.distro":
-		content => "${name} ${args}\n",		# TODO???: content => template('cobbler/TODO.distro.erb'), ???TODO
+		content => "${name}\n${args}\n",
 		owner => root,
 		group => nobody,
 		mode => 600,	# u=rw,go=
@@ -898,6 +900,8 @@ class cobbler_realrepo {
 	$rm_cmd = '/usr/bin/cobbler repo remove --name='		# delete cobbler repo
 	$fs_chr = ' '
 	$suffix = '.repo'
+	$regexp = []
+	$ignore = []
 
 	# build the clean script
 	file { "${vardir}/clean-repos.sh":
@@ -964,7 +968,7 @@ define cobbler::realrepo(
 	$args = "--mirror=${mirror} --keep-updated=${bool_keepupdated}"
 
 	file { "${vardir}/repos/${name}.repo":
-		content => "${name} ${args}\n",		# TODO???: content => template('cobbler/TODO.repo.erb'), ???TODO
+		content => "${name}\n${args}\n",
 		owner => root,
 		group => nobody,
 		mode => 600,	# u=rw,go=
@@ -1391,6 +1395,8 @@ class cobbler_profile {
 	$rm_cmd = '/usr/bin/cobbler profile remove --name='		# delete cobbler profile
 	$fs_chr = ' '
 	$suffix = '.profile'
+	$regexp = []
+	$ignore = []
 
 	# build the clean script
 	file { "${vardir}/clean-profiles.sh":
@@ -1554,7 +1560,7 @@ define cobbler::profile(
 	#}
 
 	file { "${vardir}/profiles/${name}.profile":
-		content => "${name} ${args}\n",		# TODO???: content => template('cobbler/TODO.profile.erb'), ???TODO
+		content => "${name}\n${args}\n",
 		owner => root,
 		group => nobody,
 		mode => 600,	# u=rw,go=
@@ -1611,6 +1617,8 @@ class cobbler_system {
 	$rm_cmd = '/usr/bin/cobbler system remove --name='		# delete cobbler system
 	$fs_chr = ' '
 	$suffix = '.system'
+	$regexp = []
+	$ignore = []
 
 	# build the clean script
 	file { "${vardir}/clean-systems.sh":
@@ -1810,7 +1818,7 @@ define cobbler::system(
 	}
 
 	file { "${vardir}/systems/${name}.system":
-		content => "${name} ${args}\n",		# TODO???: content => template('cobbler/TODO.system.erb'), ???TODO
+		content => "${name}\n${args}\n",
 		owner => root,
 		group => nobody,
 		mode => 600,	# u=rw,go=
