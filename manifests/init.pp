@@ -536,8 +536,9 @@ class cobbler_import {
 define cobbler::import(
 	$basepath = '',	# eg: rsync://mirror.csclub.uwaterloo.ca/centos/6.3/
 	$mirror = '',	# alternative to $basepath which uses the value directly
+	$kopts = [],		# added to kopts_{installer,installed}
 	$kopts_installer = [],	# installer os kopts
-	$kopts = [],		# installed os kopts
+	$kopts_installed = [],	# installed os kopts
 	$ksmeta = [],
 	$breed = 'redhat',
 	$updates = true,	# do we want to add the updates repository ?
@@ -694,8 +695,9 @@ define cobbler::import(
 			default => "${initrd}",
 		},
 		arch => "${arch}",
-		kopts_installer => $kopts_installer,
 		kopts => $kopts,
+		kopts_installer => $kopts_installer,
+		kopts_installed => $kopts_installed,
 		ksmeta => $ksmeta,
 		ksmeta_defaults => $httpfakeimport ? {
 			# NOTE: instead of re-copying over a distro, just link!
@@ -723,6 +725,8 @@ define cobbler::import(
 			arch => "${arch}",
 			repos => ["${distro}updates-${arch}"],
 			kopts => $kopts,
+			kopts_installer => $kopts_installer,
+			kopts_installed => $kopts_installed,
 		}
 	}
 }
@@ -777,9 +781,9 @@ define cobbler::distro(
 	$kernel = '',		# path
 	$initrd = '',		# path
 	$arch = '',		# x86_64, i686, etc... blank for no change
-	$kopts_installer = [],	# installer os kopts
-	$kopts = [],		# installed os kopts
-	$kopts_defaults = [],
+	$kopts = [],			# added to kopts_{installer,installed}
+	$kopts_installer = [],		# installer os kopts
+	$kopts_installed = [],		# installed os kopts
 	$ksmeta = [],
 	$ksmeta_defaults = ["tree=http://@@server@@/cblr/links/${name}", 'puppet_auto_setup=1'],	# FIXME: can the $tree variable be moved to use https instead?
 	$breed = 'redhat',	# TODO: implement
@@ -824,8 +828,8 @@ define cobbler::distro(
 	# NOTE: there is an intentional renaming happening here so that var:
 	# 'kopts' has the same meaning across cobbler+puppet. If the distro,
 	# profile and system 'kopts' don't mean the same, then fix this bug!
-	$args04 = sprintf("--kopts='%s'", inline_template('<%= kopts_installer.sort.join(" ") %>'))
-	$args05 = sprintf("--kopts-post='%s'", inline_template('<%= (kopts+kopts_defaults).sort.join(" ") %>'))
+	$args04 = sprintf("--kopts='%s'", inline_template('<%= (kopts+kopts_installer).uniq.sort.join(" ") %>'))
+	$args05 = sprintf("--kopts-post='%s'", inline_template('<%= (kopts+kopts_installed).uniq.sort.join(" ") %>'))
 	$args06 = sprintf("--ksmeta='%s'", inline_template('<%= (ksmeta+ksmeta_defaults).uniq.sort.join(" ") %>'))
 
 	# put all the args in an array, remove the empty ones, and join with spaces (this removes '  ' double spaces uglyness)
@@ -1441,7 +1445,9 @@ define cobbler::profile(
 	# --virt-cpus=integer
 	# --virt-path=string
 	# --virt-bridge=string
-	$kopts = [],
+	$kopts = [],			# added to kopts_{installer,installed}
+	$kopts_installer = [],		# installer os kopts
+	$kopts_installed = [],		# installed os kopts
 	$ksmeta = [],
 	$pxemenu = '',			# enable pxe menu ? true or false
 	$serveroverride = ''		# specify a different cobbler server ip
@@ -1500,24 +1506,25 @@ define cobbler::profile(
 	}
 
 	$args06 = sprintf("--repos='%s'", inline_template('<%= repos.sort.join(" ") %>'))
-	$args07 = sprintf("--kopts='%s'", inline_template('<%= kopts.sort.join(" ") %>'))
-	$args08 = sprintf("--ksmeta='%s'", inline_template('<%= ksmeta.uniq.sort.join(" ") %>'))
+	$args07 = sprintf("--kopts='%s'", inline_template('<%= (kopts+kopts_installer).uniq.sort.join(" ") %>'))
+	$args08 = sprintf("--kopts-post='%s'", inline_template('<%= (kopts+kopts_installed).uniq.sort.join(" ") %>'))
+	$args09 = sprintf("--ksmeta='%s'", inline_template('<%= ksmeta.uniq.sort.join(" ") %>'))
 
-	$args09 = $valid_serveroverride ? {
+	$args10 = $valid_serveroverride ? {
 		'' => '',
 		# BUG: --server-override is supposed to work, but it seems it's actually '--server'
 		#default => "--server-override=${valid_serveroverride}",
 		default => "--server=${valid_serveroverride}",
 	}
 
-	$args10 = $pxemenu ? {
+	$args11 = $pxemenu ? {
 		true => '--enable-menu=1',
 		false => '--enable-menu=0',
 		default => '',	# undef scenario; leave global default untouched
 	}
 
 	# put all the args in an array, remove the empty ones, and join with spaces (this removes '  ' double spaces uglyness)
-	$arglist = ["${args01}", "${args02}", "${args03}", "${args04}", "${args05}", "${args06}", "${args07}", "${args08}", "${args09}", "${args10}"]
+	$arglist = ["${args01}", "${args02}", "${args03}", "${args04}", "${args05}", "${args06}", "${args07}", "${args08}", "${args09}", "${args10}", "${args11}"]
 	$args = inline_template('<%= arglist.delete_if {|x| x.empty? }.join(" ") %>')
 	# TODO: replace all these delete_if templates with: $args = join(delete($arglist, ''), ' ')
 
@@ -1659,7 +1666,9 @@ define cobbler::system(
 	$virtram = false,		# integer value in megabytes
 	$virtpath = false,		# this can be a complete path to an img
 	$virtfilesize = false,		# integer value in gigabytes
-	$kopts = [],
+	$kopts = [],			# added to kopts_{installer,installed}
+	$kopts_installer = [],		# installer os kopts
+	$kopts_installed = [],		# installed os kopts
 	$ksmeta = [],
 	#$extras = [],
 	$netboot = false,		# allow install from pxe boot ?
@@ -1768,47 +1777,48 @@ define cobbler::system(
 	# for B are "x=9 y=2 z=2". To remove a kernel argument that may be
 	# added by a higher cobbler object (or in the global settings), you can
 	# prefix it with a "!".
-	$args02 = sprintf("--kopts='%s'", inline_template('<%= kopts.sort.join(" ") %>'))
-	$args03 = sprintf("--ksmeta='%s'", inline_template('<%= ksmeta.uniq.sort.join(" ") %>'))
+	$args02 = sprintf("--kopts='%s'", inline_template('<%= (kopts+kopts_installer).uniq.sort.join(" ") %>'))
+	$args03 = sprintf("--kopts-post='%s'", inline_template('<%= (kopts+kopts_installed).uniq.sort.join(" ") %>'))
+	$args04 = sprintf("--ksmeta='%s'", inline_template('<%= ksmeta.uniq.sort.join(" ") %>'))
 
-	$args04 = $valid_ipaddress ? {
+	$args05 = $valid_ipaddress ? {
 		'' => '',
 		# netmask: cobbler calls this 'subnet'
 		default => "--ip-address=${valid_ipaddress} --subnet=${valid_netmask}",
 	}
 
 	# TODO: i've allowed specifying gateway even if dhcp==true, is this ok?
-	$args05 = $valid_gateway ? {
+	$args06 = $valid_gateway ? {
 		'' => '',
 		default => "--gateway=${valid_gateway}",
 	}
 
-	$args06 = $dhcp ? {
+	$args07 = $dhcp ? {
 		true => "--static=0",
 		default => "--static=1",
 	}
 
-	$args07 = $virtcpus ? {
+	$args08 = $virtcpus ? {
 		false => '',
 		default => "--virt-cpus=${virtcpus}",	# int
 	}
 
-	$args08 = $virtram ? {
+	$args09 = $virtram ? {
 		false => '',
 		default => "--virt-ram=${virtram}",	# megabytes
 	}
 
-	$args09 = $virtpath ? {
+	$args10 = $virtpath ? {
 		false => '',
 		default => "--virt-path=${virtpath}",
 	}
 
-	$args10 = $virtfilesize ? {
+	$args11 = $virtfilesize ? {
 		false => '',
 		default => "--virt-file-size=${virtfilesize}",
 	}
 
-	$args11 = $valid_serveroverride ? {
+	$args12 = $valid_serveroverride ? {
 		'' => '',
 		# BUG: --server-override is supposed to work, but it seems it's actually '--server'
 		#default => "--server-override=${valid_serveroverride}",
@@ -1816,7 +1826,7 @@ define cobbler::system(
 	}
 
 	# put all the args in an array, remove the empty ones, and join with spaces (this removes '  ' double spaces uglyness)
-	$arglist = ["${args01}", "${args02}", "${args03}", "${args04}", "${args05}", "${args06}", "${args07}", "${args08}", "${args09}", "${args10}", "${args11}"]
+	$arglist = ["${args01}", "${args02}", "${args03}", "${args04}", "${args05}", "${args06}", "${args07}", "${args08}", "${args09}", "${args10}", "${args11}", "${args12}"]
 	$args = inline_template('<%= arglist.delete_if {|x| x.empty? }.join(" ") %>')
 
 	$requires = $profile ? {
