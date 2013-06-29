@@ -222,12 +222,6 @@ class cobbler (
 		default => "${authorization}",
 	}
 
-	# FIXME: once i ran mkdir /tftpboot but i've also tried this symlink...
-	file { '/tftpboot':	# this directory seems to be needed for cobbler
-		ensure => '/var/lib/tftpboot/',	# ln -s /var/lib/tftpboot/ /tftpboot
-		before => Package['cobbler'],
-	}
-
 	# cobbler package pulls in deps
 	package { 'cobbler':
 		ensure => present,
@@ -262,6 +256,19 @@ class cobbler (
 		refreshonly => true,
 		logoutput => on_failure,
 		require => [Package['cobbler'], Package['policycoreutils-python']],
+	}
+
+	# cobbler incorrectly picked /tftpboot as the tftp dir in cobbler 2.2.3
+	# this is because util.tftpboot_location() didn't know about centos yet
+	# FIXME: this has to update every cobbler sync or cobbler add/modify/rm
+	file { '/tftpboot':
+		#source => '/var/lib/tftpboot/',
+		owner => nobody, group => nobody,
+		#recurse => true,
+		backup => false,
+		notify => Service['xinetd'],
+		before => Service['xinetd'],
+		require => Package['cobbler'],
 	}
 
 	if $web {
