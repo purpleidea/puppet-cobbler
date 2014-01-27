@@ -473,7 +473,7 @@ class cobbler (
 	# FIXME: consider allowing only certain ip's to the http server (and maybe xmlrpc?)
 	# NOTE: don't serve tftp on the public net!
 	if $shorewall {
-		if $allow == 'all' {
+		if $allow == 'all' or "${allow}" == '' {
 			$net = "${zone}"
 		} else {
 			$net = is_array($allow) ? {
